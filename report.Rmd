@@ -1,0 +1,92 @@
+---
+title: "Report"
+author:
+    - ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+   rmd: "report.Rmd"
+output:
+  html_document:
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
+---
+
+
+
+
+## Report for `r unlist(strsplit(snakemake@input[[1]], split='/', fixed=TRUE))[2]`.
+
+
+
+
+```{r data,  message=FALSE, warning=FALSE, echo=FALSE}
+suppressPackageStartupMessages({
+  library(CellBench)
+  library(ggplot2)
+  library(scater)
+  library(jcolors)
+  library(CellMixS)
+  library(gridExtra)
+  library(purrr)
+  library(jcolors)
+  library(here)
+  library(tidyr)
+  library(dplyr)
+  library(stringr)
+  library(variancePartition)
+  library(diffcyt)
+  library(ComplexHeatmap)
+})
+snakemake@input
+dataset_name<-snakemake@input[[1]]
+dataset_name
+  if(grepl('cellBench', dataset_name)){
+    sessionInfo()
+    data_path <- here::here("data")
+    sce <- readRDS(dataset_name,".rds")
+    params<-readRDS(file=snakemake@input[[1]])
+    attach(params)
+    params
+  }
+  if(grepl('csf_media', dataset_name)){
+    sessionInfo()
+    data_path <- here::here("data")
+    sce <- readRDS(paste0(data_path, "/csf_media.rds"))
+    names(colData(sce))
+  }
+
+
+```
+
+# Visualize batch effect
+```{r vis batch}
+if(grepl('cellBench', dataset_name)){
+#variables
+batch <- "protocol"
+celltype <- "cell_line"
+feature_list <- c(batch, celltype)
+lapply(feature_list, function(feature_name){
+  visGroup(sce, feature_name, dim_red= "UMAP")
+})
+}
+if(grepl('csf_media', dataset_name)){
+batch <- "media"
+celltype <- "cluster.merged"
+sample <- "Sample"
+feature_list <- c(batch, celltype, sample)
+lapply(feature_list, function(feature_name){
+  visGroup(sce, feature_name, dim_red= "UMAP")
+})
+}
+```
+
+
+## Source
+<a download="report.Rmd" href="`r base64enc::dataURI(file = params$rmd, mime = 'text/rmd', encoding = 'base64')`">R Markdown source file (to produce this document)</a>
+
