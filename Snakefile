@@ -37,6 +37,9 @@ rule Rmarkdown:
 	script:
 		"analysis/report.Rmd"
 
+## -------------------------------------------------------------------------- ##
+## Settings
+## -------------------------------------------------------------------------- ##
 
 rule settings:
     input:
@@ -46,6 +49,10 @@ rule settings:
     shell:
         "Rscript --vanilla analysis/settings.R {input} {output}"
 
+## -------------------------------------------------------------------------- ##
+## VariancePartition
+## -------------------------------------------------------------------------- ##
+
 rule variancePartition:
     input:
         sce="data/{sample}.rds", settings = "output/settings_{sample}.rds"
@@ -54,6 +61,9 @@ rule variancePartition:
     shell:
         "Rscript --vanilla analysis/variancePartition.R {input.sce} {input.settings} {output.vp}"
 
+## -------------------------------------------------------------------------- ##
+## Cell abundances
+## -------------------------------------------------------------------------- ##
 
 rule rel_abund_diff:
     input:
@@ -63,6 +73,10 @@ rule rel_abund_diff:
     shell:
         "Rscript --vanilla analysis/rel_diff_abund.R {input.sce} {input.settings} {output.rel_diff_abund}"
 
+## -------------------------------------------------------------------------- ##
+## CMS score
+## -------------------------------------------------------------------------- ##
+
 rule cms:
     input:
         sce="data/{sample}.rds", settings="output/settings_{sample}.rds"
@@ -70,6 +84,10 @@ rule cms:
         cms="output/cms_{sample}.rds", cms_summary="output/cms_summary_{sample}.rds"
     shell:
         "Rscript --vanilla analysis/cms.R {input.sce} {input.settings} {output.cms} {output.cms_summary}"
+
+## -------------------------------------------------------------------------- ##
+## Differential analysis
+## -------------------------------------------------------------------------- ##
 
 rule de_analysis:
     input:
@@ -79,6 +97,10 @@ rule de_analysis:
     shell:
         "Rscript --vanilla analysis/de_analysis.R {input.sce} {input.settings} {output.res} {output.de_summary}"
 
+## -------------------------------------------------------------------------- ##
+## Simulations
+## -------------------------------------------------------------------------- ##
+
 rule simulation:
     input:
         res="output/res_{sample}.rds", de_summary="output/de_summary_{sample}.rds", sce="data/{sample}.rds", summary_vp="output/vp_{sample}.rds", settings="output/settings_{sample}.rds"
@@ -87,6 +109,9 @@ rule simulation:
     shell:
         "Rscript --vanilla analysis/simulation.R {input.res} {input.de_summary} {input.sce} {input.summary_vp} {input.settings} {output.sim}"
 
+## -------------------------------------------------------------------------- ##
+## Summary
+## -------------------------------------------------------------------------- ##
 
 rule summary:
     input:
