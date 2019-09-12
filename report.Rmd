@@ -25,7 +25,9 @@ output:
 
 
 
+
 ```{r data,  message=FALSE, warning=FALSE, echo=FALSE}
+
 suppressPackageStartupMessages({
   library(CellBench)
   library(ggplot2)
@@ -42,49 +44,107 @@ suppressPackageStartupMessages({
   library(variancePartition)
   library(diffcyt)
   library(ComplexHeatmap)
+  library(stringr)
 })
-snakemake@input
+
 dataset_name<-snakemake@input[[1]]
-dataset_name
-  if(grepl('cellBench', dataset_name)){
-    sessionInfo()
-    data_path <- here::here("data")
-    sce <- readRDS(dataset_name,".rds")
-    params<-readRDS(file=snakemake@input[[1]])
-    attach(params)
-    params
-  }
-  if(grepl('csf_media', dataset_name)){
-    sessionInfo()
-    data_path <- here::here("data")
-    sce <- readRDS(paste0(data_path, "/csf_media.rds"))
-    names(colData(sce))
-  }
+data_path <- here::here("data")
+out_path <- here::here("output")
+data_path<-str_remove(data_path,"data")
+out_path<-str_remove(data_path,"data")
+sce <- readRDS(paste0(data_path,snakemake@input[[1]]))
 
-
+params <- readRDS(paste0(out_path,snakemake@input[[2]]))
+# 
+#   if(grepl('cellBench', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_cellBench.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_cellBench.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype)
+#   }
+#   if(grepl('csf_media', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_csf_media.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_csf_media.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype,sample)
+#   }
+# if(grepl('csf_patient', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_csf_patient.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_csf_patient.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype,sample)
+# }
+# if(grepl('pancreas', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_pancreas.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_pancreas.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype, sample)
+#     }
+# if(grepl('hca', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_hca.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_hca.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype)
+# }
+# if(grepl('khang_patient', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_khang_patient.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_khang_patient.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype)
+# }
+# if(grepl('pbmc_media_storage', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_csf_patient.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_csf_patient.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype, sample)
+#     }
+# if(grepl('pbmc2_patient', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_pbmc2_patient.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_pbmc2_patient.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype, sample)
+#     }
+# if(grepl('pbmc2_media', dataset_name)){
+#     params<-readRDS(paste0(out_path,"/settings_pbmc2_media.rds"))
+#     attach(params)
+#     vp<-readRDS(paste0(out_path,"/vp_pbmc2_media.rds"))
+#     attach(vp)
+#     feature_list <- c(batch, celltype, sample)
+#     }
 ```
 
-# Visualize batch effect
-```{r vis batch}
-if(grepl('cellBench', dataset_name)){
-#variables
-batch <- "protocol"
-celltype <- "cell_line"
-feature_list <- c(batch, celltype)
-lapply(feature_list, function(feature_name){
-  visGroup(sce, feature_name, dim_red= "UMAP")
-})
-}
-if(grepl('csf_media', dataset_name)){
-batch <- "media"
-celltype <- "cluster.merged"
-sample <- "Sample"
-feature_list <- c(batch, celltype, sample)
-lapply(feature_list, function(feature_name){
-  visGroup(sce, feature_name, dim_red= "UMAP")
-})
-}
-```
+
+<!-- # Visualize batch effect -->
+
+<!-- ```{r vis batch} -->
+<!-- lapply(feature_list, function(feature_name){ -->
+<!--   visGroup(sce, feature_name, dim_red= "UMAP") -->
+<!-- }) -->
+<!-- ``` -->
+
+<!-- # Size /Strength of the batch effcet -->
+<!-- How much of the variance within data can be attributed to the batch effect? -->
+
+
+<!-- ## VariancePartitioning -->
+
+<!-- How much of the variance within each genes expression can be explained by the batch effect and the celltype? for each gene we fit a model with batch and celltype as covariate and estimate respective variances from the corresponding residuals. -->
+
+<!-- ```{r variance part} -->
+
+<!-- #plot -->
+<!-- plotPercentBars(vp_sub[1:10,] ) -->
+<!-- plotVarPart(vp_sub ) -->
+
+<!-- ``` -->
 
 
 ## Source

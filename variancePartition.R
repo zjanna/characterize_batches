@@ -56,12 +56,13 @@ m_rel <- m_batch/m_celltype
 
 
 #Median variance explained by the batch effect/celltype
+
 me_batch <- median(asin(vp[, batch]))
 me_celltype <- median(asin(vp[, celltype]))
 me_rel <- me_batch/me_celltype
 
 
-params_summary_vp<-list(n_rel=n_rel,n_batch_gene=n_batch_gene,
+params_summary_vp<-list(vp_sub = vp_sub, n_rel=n_rel,n_batch_gene=n_batch_gene,
                         n_batch_gene10=n_batch_gene10,n_celltype_gene=n_celltype_gene,
                         m_batch=m_batch,m_celltype=m_celltype,
                         me_batch=me_batch,me_celltype=me_celltype)
