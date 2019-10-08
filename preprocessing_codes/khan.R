@@ -1,0 +1,260 @@
+---
+title: "Preprocessing of KHAN dataset"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+  toc: true
+---
+  
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(autodep = TRUE, cache = TRUE)
+```
+
+# Libraries
+
+```{r message = FALSE, warning = FALSE}
+suppressPackageStartupMessages({
+  library(pheatmap)
+  library(scater)
+  library(dplyr)
+  library(reshape2)
+  library(ggplot2)
+  library(cowplot)
+  library(mvoutlier)
+  library(Matrix)
+  library(purrr)
+  library(gplots)
+  library(scran)
+  library(Seurat)
+  library(mclust)
+  library(readxl)
+  library(DropletUtils)
+  library(magrittr)
+  library(LSD)
+  library(CellMixS)
+  library(ExperimentHub)
+})
+
+```
+
+```{r message = FALSE}
+# Parameters
+output_path<- "/home/zjanna/preprocessing_codes/output"
+seed <- 1234
+```
+
+# Load data
+```{r message = FALSE}
+sc<-ExperimentHub()
+sce<-sc[["EH2259"]]
+## Filter out genes that are not expressed in any cell
+sce <- sce[which(rowSums(counts(sce) > 0) > 0), ]
+dim(sce)
+sce$Sample<-sce$ind
+sce$dataset<-sce$ind
+```
+
+# Calculate QC Metrics
+```{r}
+
+# Mitochondrial genes
+is.mito <- grepl("^MT", rowData(sce)$SYMBOL, ignore.case=T)
+summary(is.mito)
+rownames(sce)[is.mito]
+sce <- calculateQCMetrics(sce, feature_controls=list(Mt = is.mito),  percent_top=c(20,50,100,200))
+plotHighestExprs(sce,n=20)
+
+```
+
+# Filtering
+```{r fig.height = 10, fig.width = 12}
+# Find outlier
+# Plot filters
+
+plotFilters <- function( sce, var="log10_total_counts", split_by="Sample", nrow=NULL,
+                         nmads=c(2,3,5), lt=c("dashed","dotted","dotdash"), xscale="free" ){
+  CD <- as.data.frame(colData(sce))
+  if(!(var %in% colnames(CD))) stop(paste("`var`",var,"is not in `colData(sce)`!"))
+  if(!is.null(split_by) && !(split_by %in% colnames(CD))){
+    stop(paste("`split_by`",split_by,"is not in `colData(sce)`!"))
+  }
+  library(ggplot2)
+  library(cowplot)
+  d <- CD[,var,drop=F]
+  if(!is.null(split_by)) d$dataset <- CD[[split_by]]
+  p <- ggplot(d, aes_string(x=var)) + geom_histogram(color="darkblue", bins=30)
+  if(xscale!="free"){
+    if(xscale!="fixed"){
+      if(xscale>1 && xscale%%1==0){
+        xq <- .tmads(d[[var]], xscale)
+        xr <- range(d[[var]],na.rm=T)
+        xq <- c(max(xq[1],xr[1]), min(xq[2],xr[2]))
+      }else{
+        if(xscale<=1 & xscale>0){
+          xscale <- (1-xscale)/2
+          xq <- quantile(d[[var]], probs=c(xscale,1-xscale), na.rm=T)
+        }else{
+          stop("Wrong `xscale` value!")
+        }
+      }
+      p <- p + xlim(xq[1], xq[2])
+    }
+  }
+  
+  if(!is.null(split_by)){
+    if(is.null(nrow)) nrow <- ceiling(length(unique(d$dataset))/3)
+    p <- p + facet_wrap(~dataset, scales=ifelse(xscale=="free","free","free_y"), nrow=nrow)
+    for(ds in unique(d$dataset)){
+      for(i in 1:length(nmads)){
+        ma <- .tmads(d[which(d$dataset==ds),var], nmads[i])
+        df2 <- data.frame(xint=as.numeric(ma), dataset=rep(ds,2))
+        p <- p + geom_vline(data=df2, aes(xintercept=xint), linetype=lt[i])
+      }
+    }
+  }else{
+    for(i in 1:length(nmads)){
+      df2 <- data.frame(xint=as.numeric(.tmads(d[[var]], nmads[i])))
+      p <- p + geom_vline(data=df2, aes(xintercept=xint), linetype=lt[i])
+    }
+  }
+  p
+}
+.tmads <- function(x, nbmads=2.5){
+  x2 <- nbmads*median(abs(x-median(x)))
+  median(x)+c(-x2,x2)
+}
+
+
+plotFilters(sce)
+plotFilters(sce, "log10_total_features_by_counts")
+plotFilters(sce, "pct_counts_Mt", xscale=0.98)
+
+#Filtering
+sce$total_counts_drop <- isOutlier(sce$total_counts, nmads = 2.5, 
+                                   type = "both", log = TRUE, batch=sce$dataset)
+
+sce$total_features_drop <- isOutlier(sce$total_features_by_counts, nmads = 2.5, 
+                                     type = "both", log = TRUE, batch=sce$dataset)
+
+sce$mito_drop <- sce$pct_counts_Mt > .5 &
+  isOutlier(sce$pct_counts_Mt, nmads = 2.5, type = "higher", batch=sce$dataset)
+
+sce$isOutlier <- sce$total_counts_drop | sce$total_features_drop | sce$mito_drop
+# quality plot
+plQCplot(colData(sce), show.legend=FALSE)
+
+ggplot(colData(sce) %>% as.data.frame, aes(x=total_features_by_counts, y=total_counts, colour=pct_counts_Mt)) + geom_point() + facet_wrap(~Sample) +geom_density_2d(col="white") + scale_x_sqrt() + scale_y_sqrt()
+ggplot(colData(sce) %>% as.data.frame, aes(x=total_features_by_counts, y=pct_counts_Mt)) + geom_point() + facet_wrap(~Sample) +geom_density_2d(col="white")
+
+
+```
+
+```{r fig.width = 12, fig.height = 5}
+# Check outlier
+mets <- c("total_counts_drop","total_features_drop","mito_drop")
+sapply(mets, FUN=function(x){ sapply(mets, y=x, function(x,y){ sum(sce[[x]] & sce[[y]]) }) })
+
+nbcells <- cbind(table(sce$Sample),table(sce$Sample[!sce$isOutlier]))
+colnames(nbcells) <- c("cells total","cells after filtering")
+nbcells
+
+layout(matrix(1:2,nrow=1))
+LSD::heatscatter( sce$total_counts, sce$total_features_by_counts, xlab="Total counts", ylab="Non-zero features", main="",log="xy")
+w <- which(!sce$isOutlier)
+LSD::heatscatter( sce$total_counts[w], sce$total_features_by_counts[w], xlab="Total counts", ylab="Non-zero features", main="Filtered cells",log="xy")
+
+# summary of cells kept
+cct <- table(sce$isOutlier, sce$Sample)
+row.names(cct) <- c("Kept", "Filtered out")
+cct
+# drop outlier cells
+sce <- sce[,!sce$isOutlier]
+# require count > 1 in at least 20 cells
+sce <- sce[which(rowSums(counts(sce)>1)>=20),]
+dim(sce)
+
+#  Sample filtering
+sce<-sce[,!sce$Sample %in% c("101","107")]
+plQCplot(colData(sce), show.legend=FALSE)
+dim(sce)
+table(sce$dataset)
+
+```
+
+
+# Normalization
+```{r normalization}
+# Scater
+set.seed(1000)
+clusters <- quickCluster(sce, use.ranks=FALSE)
+table(clusters)
+sce <- computeSumFactors(sce, min.mean=0.1, cluster=clusters) ##cluster information added
+sce <- normalize(sce)   
+```
+
+# Integration
+```{r integration}
+# create SeuratObject
+seurat <- CreateSeuratObject(counts = counts(sce), meta.data = as.data.frame(colData(sce)), min.cells = 0, min.features = 0, project = "10X", names.delim = ".")
+
+# normalize, find variable genes, and scale
+sl <- lapply(unique(as.character(seurat@meta.data$dataset)), FUN=function(x){
+  x <- NormalizeData(SubsetData(seurat, cells=which(seurat@meta.data$dataset==x)))
+  ScaleData(x)
+  x <- FindVariableFeatures(x, verbose=F)
+  # use non-standardized variance
+  v <- x@assays$RNA@meta.features[["vst.variance"]]
+  VariableFeatures(x) <- row.names(x@assays$RNA@meta.features)[order(v, decreasing=TRUE)[1:500]]
+  x
+})
+
+
+# find anchors & integrate
+anchors <- FindIntegrationAnchors(sl)
+seurat <- IntegrateData(anchorset = anchors, dims = seq_len(30),
+                        features.to.integrate = rownames(sce))
+
+# scale integrated data
+DefaultAssay(object=seurat) <- "integrated"
+seurat <- ScaleData(seurat, verbose=F)
+```
+
+# Dimension reduction
+```{r dimred}
+seurat <- RunPCA(object = seurat, npcs = 30, verbose = FALSE)
+seurat <- RunTSNE(object = seurat, perplexity = 30,reduction = "pca", dims = seq_len(20),
+                  seed.use = seed, do.fast = TRUE, verbose = FALSE)
+seurat <- RunUMAP(object = seurat, reduction = "pca", dims = seq_len(20),
+                  seed.use = seed, verbose = FALSE,n.neighbors = 30, min.dist = 0.5)
+```
+
+# Clustering
+```{r clustering}
+seurat <- FindNeighbors(object = seurat, reduction = "pca", dims = seq_len(20), verbose = FALSE)
+for (res in c(0.1, 0.2, 0.4, 0.8, 1, 1.2, 2))
+seurat <- FindClusters(object = seurat, resolution = res, random.seed = seed, verbose = FALSE)
+seurat <- SetIdent(seurat, value="integrated_snn_res.0.2")
+```
+
+
+# Convert seurat to sce
+
+```{r saving}
+sce <- SingleCellExperiment(
+  assays=list(
+    counts=seurat@assays$RNA@counts,
+    logcounts=seurat@assays$RNA@data
+  ),
+  colData=seurat@meta.data,
+  reducedDims=lapply(seurat@reductions, FUN=function(x) x@cell.embeddings)
+)
+
+# assign cluster to sce
+identical(colnames(sce), colnames(seurat))
+
+sce$seurat_cluster <- seurat@meta.data$seurat_clusters
+# Save data
+saveRDS(sce, file = paste0(output_path, "/sce_khan.rds"))
+saveRDS(seurat, file = paste0(output_path, "/seurat_khan.rds"))
+
+```
