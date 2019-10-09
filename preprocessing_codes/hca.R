@@ -14,44 +14,51 @@ knitr::opts_chunk$set(autodep = TRUE, cache = TRUE)
 
 ```{r message = FALSE, warning = FALSE}
 suppressPackageStartupMessages({
-  library(pheatmap)
   library(scater)
-  library(dplyr)
-  library(reshape2)
-  library(ggplot2)
-  library(cowplot)
-  library(mvoutlier)
-  library(Matrix)
-  library(purrr)
-  library(gplots)
   library(scran)
-  library(Seurat)
-  library(mclust)
-  library(readxl)
-  library(DropletUtils)
+  library(here)
   library(magrittr)
-  library(LSD)
+  library(purrr)
+  library(dplyr)
+  library(data.table)
+  library(Seurat)
+  # library(harmony)
+  library(scMerge)
+  # library(kBET)
   library(CellMixS)
-  library(ExperimentHub)
+  library(jcolors)
 })
+
+rseed <- 1234
 
 ```
 
 ```{r message = FALSE}
 # Parameters
-output_path<- "/home/zjanna/preprocessing_codes/output"
+data_path <- here::here("data")
+out_path <- here::here("output")
 seed <- 1234
 ```
 
 # Load data
 ```{r message = FALSE}
-sc<-ExperimentHub()
-sce<-sc[["EH2259"]]
-## Filter out genes that are not expressed in any cell
-sce <- sce[which(rowSums(counts(sce) > 0) > 0), ]
-dim(sce)
-sce$Sample<-sce$ind
-sce$dataset<-sce$ind
+
+
+# Create sce list
+protocol_names <- c("10X2x5Kcell250Kreads", "C1HTmedium", "C1HTsmall", "CELseq2", "ddSEQ", "Dropseq", "ICELL8", "inDrop", "QUARTZseq", "SCRBseq", "SMARTseq2")
+
+
+create_sce <- function(protocol){
+  data <-  data.frame(fread(paste0(data_path, "/", protocol, "_mouse_exp_mat.tsv")), row.names = 1)
+  meta_data <- data.frame(fread(paste0(data_path, "/", protocol, "_mouse_metada.tsv")), row.names = 1)
+  colnames(data) <- rownames(meta_data)
+  sce <- SingleCellExperiment(
+    assays = list(counts = as.matrix(data)), 
+    colData = meta_data
+  )
+}
+
+sce_list <- protocol_names %>% map(create_sce)
 ```
 
 # Calculate QC Metrics
@@ -203,7 +210,7 @@ sl <- lapply(unique(as.character(seurat@meta.data$dataset)), FUN=function(x){
   ScaleData(x)
   x <- FindVariableFeatures(x, verbose=F)
   # use non-standardized variance
-  v <- x@assays$RNA@meta.features[["vst.variance"]]
+  v <- x@assays$RNA@meta.features[["variance"]]
   VariableFeatures(x) <- row.names(x@assays$RNA@meta.features)[order(v, decreasing=TRUE)[1:500]]
   x
 })
@@ -254,7 +261,7 @@ identical(colnames(sce), colnames(seurat))
 
 sce$seurat_cluster <- seurat@meta.data$seurat_clusters
 # Save data
-saveRDS(sce, file = paste0(output_path, "/sce_khang.rds"))
-saveRDS(seurat, file = paste0(output_path, "/seurat_khang.rds"))
+saveRDS(sce, file = paste0(out_path, "/sce_khang.rds"))
+saveRDS(seurat, file = paste0(out_path, "/seurat_khang.rds"))
 
 ```

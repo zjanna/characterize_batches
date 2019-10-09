@@ -14,24 +14,27 @@ knitr::opts_chunk$set(autodep = TRUE, cache = TRUE)
 
 ```{r message = FALSE, warning = FALSE}
 suppressPackageStartupMessages({
+  library(plotly)
+  library(readr)
+  library(stringr)
+  library(edgeR)
+  library(stringr)
   library(pheatmap)
+  library(purrr)
   library(scater)
   library(dplyr)
   library(reshape2)
   library(ggplot2)
   library(cowplot)
-  # library(mvoutlier)
   library(Matrix)
-  library(purrr)
-  library(gplots)
   library(scran)
   library(Seurat)
-  # library(mclust)
+  library(sctransform)
   library(readxl)
   library(DropletUtils)
-  library(magrittr)
   library(LSD)
   library(CellMixS)
+  library(tibble)
 })
 
 ```
@@ -40,7 +43,7 @@ suppressPackageStartupMessages({
 # Parameters
 datadir <- "/home/Shared_s3it/_home_Shared_taupo_data_seq/calini_scrnaseq/FGCZ_human"
 data_path <- "/home/aluetg/scRNA/pbmc_media2/data"
-output_path<- "/home/zjanna/preprocessing_codes/output"
+out_path<- "/home/zjanna/preprocessing_codes/output"
 meta_dir <- "20190312 NovaSeqRun Samples Characteristics.xlsx"
 seed <- 1234
 ```
@@ -276,6 +279,7 @@ seurat <- RunUMAP(object = seurat, reduction = "pca", dims = seq_len(20),
 seurat <- FindNeighbors(object = seurat, reduction = "pca", dims = seq_len(20), verbose = FALSE)
 for (res in c(0.1, 0.2, 0.4, 0.8, 1, 1.2, 2))
   seurat <- FindClusters(object = seurat, resolution = res, random.seed = seed, verbose = FALSE)
+seurat <- SetIdent(seurat, value="integrated_snn_res.0.2")
 ```
 
 
@@ -296,7 +300,7 @@ identical(colnames(sce), colnames(seurat))
 
 sce$seurat_cluster <- seurat@meta.data$seurat_clusters
 # Save data
-saveRDS(sce, file = paste0(output_path, "/sce_pbmc_media2.rds"))
-saveRDS(seurat, file = paste0(output_path, "/seurat_pbmc_media2.rds"))
+saveRDS(sce, file = paste0(out_path, "/sce_pbmc_media2.rds"))
+saveRDS(seurat, file = paste0(out_path, "/seurat_pbmc_media2.rds"))
 
 ```
