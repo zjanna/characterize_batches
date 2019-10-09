@@ -1,12 +1,12 @@
 ---
-title: "Preprocessing of KHAN dataset"
+title: "Preprocessing of CSF dataset"
 date: '`r format(Sys.Date(), "%B %d, %Y")`'
 output:
   html_document:
   toc: true
 ---
   
-```{r echo = FALSE, warning = FALSE, message = FALSE}
+  ```{r echo = FALSE, warning = FALSE, message = FALSE}
 knitr::opts_chunk$set(autodep = TRUE, cache = TRUE)
 ```
 
@@ -35,32 +35,47 @@ suppressPackageStartupMessages({
   library(LSD)
   library(CellMixS)
   library(tibble)
-  library(ExperimentHub)
 })
+
 ```
 
 ```{r message = FALSE}
 # Parameters
-out_path<- "/home/zjanna/preprocessing_codes/output"
-seed <- 1234
+data_path = "~/Documents/Zurich/single_cell/dane/CSF/input"
+out_path = '~/Documents/Zurich/single_cell/dane/CSF/output'
+seed=1234
+
 ```
 
 # Load data
 ```{r message = FALSE}
-sc<-ExperimentHub()
-sce<-sc[["EH2259"]]
+samples <- c("~/Documents/Zurich/single_cell/dane/CSF/input/CR052","~/Documents/Zurich/single_cell/dane/CSF/input/CR059","~/Documents/Zurich/single_cell/dane/CSF/input/CR060")
+samples <- paste0(samples, "/outs/filtered_feature_bc_matrix")
+samples <- samples[file.exists(paste0(samples, "/matrix.mtx.gz"))]
+
+sce <- DropletUtils::read10xCounts(samples=samples)
+sce$dataset <- basename(gsub("/outs/filtered_feature_bc_matrix","",as.character(sce$Sample)))
+
+meta <- read_excel('~/Documents/Zurich/single_cell/dane/CSF/input/Characteristics.xlsx')
+meta <- rbind(meta, c("CR052","Human","E2490_fresh","CSF fresh"))
+meta$nbCells <- as.numeric(table(sce$dataset)[meta$`Sequencing ID`])
+sce$Sample <- meta[["Sample Name"]][match(sce$dataset, meta$`Sequencing ID`)]
+sce$dataset <- factor(sce$dataset)
+sce$media <- ifelse(grepl("fresh", sce$Sample), "fresh", "cryo")
+colnames(sce) <- paste0(sce$dataset, ".", sce$Barcode)
+rownames(sce) <- paste0(rowData(sce)$ID, ".", rowData(sce)$Symbol)
+
 ## Filter out genes that are not expressed in any cell
 sce <- sce[which(rowSums(counts(sce) > 0) > 0), ]
 dim(sce)
-sce$Sample<-sce$ind
-sce$dataset<-sce$ind
+
 ```
 
 # Calculate QC Metrics
 ```{r}
 
 # Mitochondrial genes
-is.mito <- grepl("^MT", rowData(sce)$SYMBOL, ignore.case=T)
+is.mito <- grepl("^MT-", rowData(sce)$Symbol, ignore.case=T)
 summary(is.mito)
 rownames(sce)[is.mito]
 sce <- calculateQCMetrics(sce, feature_controls=list(Mt = is.mito),  percent_top=c(20,50,100,200))
@@ -70,9 +85,8 @@ plotHighestExprs(sce,n=20)
 
 # Filtering
 ```{r fig.height = 10, fig.width = 12}
-# Find outlier
-# Plot filters
 
+# Plot filters
 plotFilters <- function( sce, var="log10_total_counts", split_by="Sample", nrow=NULL,
                          nmads=c(2,3,5), lt=c("dashed","dotted","dotdash"), xscale="free" ){
   CD <- as.data.frame(colData(sce))
@@ -131,6 +145,31 @@ plotFilters(sce)
 plotFilters(sce, "log10_total_features_by_counts")
 plotFilters(sce, "pct_counts_Mt", xscale=0.98)
 
+# Find outlier
+outlierPlot <- function(cd, feature, aph=NULL, logScale=FALSE, show.legend=TRUE){
+  if(is.null(aph)) aph <- paste0(feature, "_drop")
+  if(!(aph %in% colnames(cd))) aph <- NULL
+  p <-  ggplot(as.data.frame(cd), aes_string(x = feature, alpha = aph)) + 
+    geom_histogram(show.legend=show.legend)
+  if(!is.null(aph)) p <- p + scale_alpha_manual(values = c("TRUE" = 0.4, "FALSE" = 1))
+  if(logScale) p <- p + scale_x_log10()
+  p
+}
+
+plQCplot <- function(cd, show.legend=TRUE){
+  ps <- lapply(split(cd,cd$dataset), sl=show.legend, FUN=function(x,sl){
+    list( outlierPlot( x, "total_counts", logScale=T, show.legend=sl),
+          outlierPlot( x, "total_features_by_counts", "total_features_drop", 
+                       logScale=T, show.legend=sl),
+          outlierPlot( x, "pct_counts_Mt", "mito_drop", show.legend=sl)
+    )
+  })
+  plot_grid( plotlist = do.call(c, ps), 
+             labels=rep(basename(names(ps)), each=length(ps[[1]])), 
+             ncol=length(ps[[1]]), 
+             label_x=0.5 )
+}
+
 #Filtering
 sce$total_counts_drop <- isOutlier(sce$total_counts, nmads = 2.5, 
                                    type = "both", log = TRUE, batch=sce$dataset)
@@ -138,7 +177,7 @@ sce$total_counts_drop <- isOutlier(sce$total_counts, nmads = 2.5,
 sce$total_features_drop <- isOutlier(sce$total_features_by_counts, nmads = 2.5, 
                                      type = "both", log = TRUE, batch=sce$dataset)
 
-sce$mito_drop <- sce$pct_counts_Mt > .5 &
+sce$mito_drop <- sce$pct_counts_Mt > 5 &
   isOutlier(sce$pct_counts_Mt, nmads = 2.5, type = "higher", batch=sce$dataset)
 
 sce$isOutlier <- sce$total_counts_drop | sce$total_features_drop | sce$mito_drop
@@ -147,7 +186,6 @@ plQCplot(colData(sce), show.legend=FALSE)
 
 ggplot(colData(sce) %>% as.data.frame, aes(x=total_features_by_counts, y=total_counts, colour=pct_counts_Mt)) + geom_point() + facet_wrap(~Sample) +geom_density_2d(col="white") + scale_x_sqrt() + scale_y_sqrt()
 ggplot(colData(sce) %>% as.data.frame, aes(x=total_features_by_counts, y=pct_counts_Mt)) + geom_point() + facet_wrap(~Sample) +geom_density_2d(col="white")
-
 
 ```
 
@@ -175,11 +213,7 @@ sce <- sce[,!sce$isOutlier]
 sce <- sce[which(rowSums(counts(sce)>1)>=20),]
 dim(sce)
 
-#  Sample filtering
-sce<-sce[,!sce$Sample %in% c("101","107")]
 plQCplot(colData(sce), show.legend=FALSE)
-dim(sce)
-table(sce$dataset)
 
 ```
 
@@ -234,7 +268,7 @@ seurat <- RunUMAP(object = seurat, reduction = "pca", dims = seq_len(20),
 ```{r clustering}
 seurat <- FindNeighbors(object = seurat, reduction = "pca", dims = seq_len(20), verbose = FALSE)
 for (res in c(0.1, 0.2, 0.4, 0.8, 1, 1.2, 2))
-seurat <- FindClusters(object = seurat, resolution = res, random.seed = seed, verbose = FALSE)
+  seurat <- FindClusters(object = seurat, resolution = res, random.seed = seed, verbose = FALSE)
 seurat <- SetIdent(seurat, value="integrated_snn_res.0.2")
 ```
 
@@ -256,7 +290,7 @@ identical(colnames(sce), colnames(seurat))
 
 sce$seurat_cluster <- seurat@meta.data$seurat_clusters
 # Save data
-saveRDS(sce, file = paste0(out_path, "/sce_khang.rds"))
-saveRDS(seurat, file = paste0(out_path, "/seurat_khang.rds"))
+saveRDS(sce, file = paste0(output_path, "/sce_csf.rds"))
+saveRDS(seurat, file = paste0(output_path, "/seurat_csf.rds"))
 
 ```
