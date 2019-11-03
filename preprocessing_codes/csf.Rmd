@@ -1,9 +1,20 @@
 ---
 title: "Preprocessing of CSF dataset"
-date: '`r format(Sys.Date(), "%B %d, %Y")`'
+author:
+    - ""
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+params:
+   rmd: "csf.Rmd"
 output:
   html_document:
-  toc: true
+  highlight: tango
+  number_sections: no
+  theme: default
+  toc: yes
+  toc_depth: 3
+  toc_float:
+    collapsed: no
+    smooth_scroll: yes
 ---
   
 ```{r echo = FALSE, warning = FALSE, message = FALSE}
@@ -28,35 +39,36 @@ suppressPackageStartupMessages({
   library(cowplot)
   library(Matrix)
   library(scran)
-  library(Seurat)
   library(sctransform)
   library(readxl)
   library(DropletUtils)
-  library(LSD)
+  # library(LSD)
   library(CellMixS)
   library(tibble)
+  library(Seurat)
 })
 
 ```
 
 ```{r message = FALSE}
 # Parameters
-data_path = "~/Documents/Zurich/single_cell/dane/CSF/input"
-out_path = '~/Documents/Zurich/single_cell/dane/CSF/output'
+data_path <- here::here("data")
+out_path <- here::here("output")
 seed=1234
 
 ```
 
 # Load data
 ```{r message = FALSE}
-samples <- c("~/Documents/Zurich/single_cell/dane/CSF/input/CR052","~/Documents/Zurich/single_cell/dane/CSF/input/CR059","~/Documents/Zurich/single_cell/dane/CSF/input/CR060")
+samples <- c(paste0(data_path,"/CR052"),paste0(data_path,"/CR059"),
+             paste0(data_path,"/CR060"))
 samples <- paste0(samples, "/outs/filtered_feature_bc_matrix")
 samples <- samples[file.exists(paste0(samples, "/matrix.mtx.gz"))]
 
 sce <- DropletUtils::read10xCounts(samples=samples)
 sce$dataset <- basename(gsub("/outs/filtered_feature_bc_matrix","",as.character(sce$Sample)))
 
-meta <- read_excel('~/Documents/Zurich/single_cell/dane/CSF/input/Characteristics.xlsx')
+meta <- read_excel(paste0(data_path,'/Characteristics.xlsx'))
 meta <- rbind(meta, c("CR052","Human","E2490_fresh","CSF fresh"))
 meta$nbCells <- as.numeric(table(sce$dataset)[meta$`Sequencing ID`])
 sce$Sample <- meta[["Sample Name"]][match(sce$dataset, meta$`Sequencing ID`)]
@@ -116,7 +128,7 @@ plotFilters <- function( sce, var="log10_total_counts", split_by="Sample", nrow=
       p <- p + xlim(xq[1], xq[2])
     }
   }
-  
+
   if(!is.null(split_by)){
     if(is.null(nrow)) nrow <- ceiling(length(unique(d$dataset))/3)
     p <- p + facet_wrap(~dataset, scales=ifelse(xscale=="free","free","free_y"), nrow=nrow)
@@ -149,7 +161,7 @@ plotFilters(sce, "pct_counts_Mt", xscale=0.98)
 outlierPlot <- function(cd, feature, aph=NULL, logScale=FALSE, show.legend=TRUE){
   if(is.null(aph)) aph <- paste0(feature, "_drop")
   if(!(aph %in% colnames(cd))) aph <- NULL
-  p <-  ggplot(as.data.frame(cd), aes_string(x = feature, alpha = aph)) + 
+  p <-  ggplot(as.data.frame(cd), aes_string(x = feature, alpha = aph)) +
     geom_histogram(show.legend=show.legend)
   if(!is.null(aph)) p <- p + scale_alpha_manual(values = c("TRUE" = 0.4, "FALSE" = 1))
   if(logScale) p <- p + scale_x_log10()
@@ -159,22 +171,22 @@ outlierPlot <- function(cd, feature, aph=NULL, logScale=FALSE, show.legend=TRUE)
 plQCplot <- function(cd, show.legend=TRUE){
   ps <- lapply(split(cd,cd$dataset), sl=show.legend, FUN=function(x,sl){
     list( outlierPlot( x, "total_counts", logScale=T, show.legend=sl),
-          outlierPlot( x, "total_features_by_counts", "total_features_drop", 
+          outlierPlot( x, "total_features_by_counts", "total_features_drop",
                        logScale=T, show.legend=sl),
           outlierPlot( x, "pct_counts_Mt", "mito_drop", show.legend=sl)
     )
   })
-  plot_grid( plotlist = do.call(c, ps), 
-             labels=rep(basename(names(ps)), each=length(ps[[1]])), 
-             ncol=length(ps[[1]]), 
+  plot_grid( plotlist = do.call(c, ps),
+             labels=rep(basename(names(ps)), each=length(ps[[1]])),
+             ncol=length(ps[[1]]),
              label_x=0.5 )
 }
 
 #Filtering
-sce$total_counts_drop <- isOutlier(sce$total_counts, nmads = 2.5, 
+sce$total_counts_drop <- isOutlier(sce$total_counts, nmads = 2.5,
                                    type = "both", log = TRUE, batch=sce$dataset)
 
-sce$total_features_drop <- isOutlier(sce$total_features_by_counts, nmads = 2.5, 
+sce$total_features_drop <- isOutlier(sce$total_features_by_counts, nmads = 2.5,
                                      type = "both", log = TRUE, batch=sce$dataset)
 
 sce$mito_drop <- sce$pct_counts_Mt > 5 &
@@ -198,10 +210,10 @@ nbcells <- cbind(table(sce$Sample),table(sce$Sample[!sce$isOutlier]))
 colnames(nbcells) <- c("cells total","cells after filtering")
 nbcells
 
-layout(matrix(1:2,nrow=1))
-LSD::heatscatter( sce$total_counts, sce$total_features_by_counts, xlab="Total counts", ylab="Non-zero features", main="",log="xy")
-w <- which(!sce$isOutlier)
-LSD::heatscatter( sce$total_counts[w], sce$total_features_by_counts[w], xlab="Total counts", ylab="Non-zero features", main="Filtered cells",log="xy")
+# layout(matrix(1:2,nrow=1))
+# LSD::heatscatter( sce$total_counts, sce$total_features_by_counts, xlab="Total counts", ylab="Non-zero features", main="",log="xy")
+# w <- which(!sce$isOutlier)
+# LSD::heatscatter( sce$total_counts[w], sce$total_features_by_counts[w], xlab="Total counts", ylab="Non-zero features", main="Filtered cells",log="xy")
 
 # summary of cells kept
 cct <- table(sce$isOutlier, sce$Sample)
@@ -225,7 +237,7 @@ set.seed(1000)
 clusters <- quickCluster(sce, use.ranks=FALSE)
 table(clusters)
 sce <- computeSumFactors(sce, min.mean=0.1, cluster=clusters) ##cluster information added
-sce <- normalize(sce)   
+sce <- scater::normalize(sce)
 ```
 
 # Integration
@@ -233,13 +245,15 @@ sce <- normalize(sce)
 # create SeuratObject
 seurat <- CreateSeuratObject(counts = counts(sce), meta.data = as.data.frame(colData(sce)), min.cells = 0, min.features = 0, project = "10X", names.delim = ".")
 
-# normalize, find variable genes, and scale
+
+
+# # normalize, find variable genes, and scale
 sl <- lapply(unique(as.character(seurat@meta.data$dataset)), FUN=function(x){
   x <- NormalizeData(SubsetData(seurat, cells=which(seurat@meta.data$dataset==x)))
   ScaleData(x)
   x <- FindVariableFeatures(x, verbose=F)
   # use non-standardized variance
-  v <- x@assays$RNA@meta.features[["variance"]]
+  v <- x@assays$RNA@meta.features[["vst.variance"]]
   VariableFeatures(x) <- row.names(x@assays$RNA@meta.features)[order(v, decreasing=TRUE)[1:500]]
   x
 })
@@ -291,7 +305,7 @@ identical(colnames(sce), colnames(seurat))
 
 sce$seurat_cluster <- seurat@meta.data$seurat_clusters
 # Save data
-saveRDS(sce, file = paste0(output_path, "/sce_csf.rds"))
-saveRDS(seurat, file = paste0(output_path, "/seurat_csf.rds"))
+saveRDS(sce, file = paste0(out_path, "/sce_csf.rds"))
+saveRDS(seurat, file = paste0(out_path, "/seurat_csf.rds"))
 
 ```
